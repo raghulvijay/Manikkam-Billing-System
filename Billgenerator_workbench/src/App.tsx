@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ShopProvider, useShop } from './context/ShopContext';
+import { ProductMasterProvider } from './context/ProductMasterContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 
@@ -208,7 +209,9 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <ShopProvider>
-        <AppRoutes />
+        <ProductMasterProvider>
+          <AppRoutes />
+        </ProductMasterProvider>
       </ShopProvider>
     </AuthProvider>
   );
