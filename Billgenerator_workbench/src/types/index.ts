@@ -102,6 +102,15 @@ export interface HsnEntry {
   gst: number;
 }
 
+export interface ProductEntry {
+  category: string;
+  brand: string;
+  productName: string;
+  hsn: string;
+  gstPercent: number;
+  isActive: boolean;
+}
+
 export interface MonthSummary {
   totalBills: number;
   totalPurchaseBills: number;
