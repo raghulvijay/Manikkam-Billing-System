@@ -1,6 +1,7 @@
 import { getToken } from '../lib/googleAuth';
-import type { CustomerBill, PurchaseBill, NoSalesDay, MonthSummary } from '../types';
+import type { CustomerBill, PurchaseBill, NoSalesDay, MonthSummary, ProductEntry } from '../types';
 import { makeBillNumber, parseSequence } from './billNumber';
+import { SAMPLE_ENTRIES } from './productMaster';
 
 const SHEETS_BASE  = 'https://sheets.googleapis.com/v4/spreadsheets';
 const SHEET_ID_KEY = 'mc-billing-v2-id';
@@ -14,6 +15,7 @@ export const TAB_PURCHASE = 'PurchaseBills';
 export const TAB_MANUAL   = 'ManualBills';
 export const TAB_NOSALES  = 'NoSalesDays';
 export const TAB_SETTINGS = 'Settings';
+export const TAB_PRODUCT  = 'ProductMaster';
 
 // CustomerBills A:U (21 cols)
 const CUSTOMER_HEADERS = [
@@ -37,9 +39,14 @@ const PURCHASE_HEADERS = [
   'category','notes','driveFileId','driveLink','uploadedAt','itemsJson',
 ];
 
-const MANUAL_HEADERS  = ['id','date','description','amount','notes','createdAt'];
-const NOSALES_HEADERS = ['id','date','month','year','reason','declarationDriveId','createdAt'];
+const MANUAL_HEADERS   = ['id','date','description','amount','notes','createdAt'];
+const NOSALES_HEADERS  = ['id','date','month','year','reason','declarationDriveId','createdAt'];
 const SETTINGS_HEADERS = ['key','value'];
+const PRODUCT_HEADERS  = ['Category','Brand','ProductName','HSN','GSTPercent','IsActive'];
+
+const PRODUCT_SAMPLE_ROWS: string[][] = SAMPLE_ENTRIES.map(e => [
+  e.category, e.brand, e.productName, e.hsn, String(e.gstPercent), 'TRUE',
+]);
 
 // ── Low-level request ──────────────────────────────────────────────────────
 
@@ -80,6 +87,7 @@ export const initSheets = async (): Promise<string> => {
         { properties: { title: TAB_MANUAL,   sheetId: 3 } },
         { properties: { title: TAB_NOSALES,  sheetId: 4 } },
         { properties: { title: TAB_SETTINGS, sheetId: 5 } },
+        { properties: { title: TAB_PRODUCT,  sheetId: 6 } },
       ],
     }),
   });
@@ -94,8 +102,10 @@ export const initSheets = async (): Promise<string> => {
     appendValues(id, `${TAB_MANUAL}!A1`,    [MANUAL_HEADERS]),
     appendValues(id, `${TAB_NOSALES}!A1`,   [NOSALES_HEADERS]),
     appendValues(id, `${TAB_SETTINGS}!A1`,  [SETTINGS_HEADERS]),
+    appendValues(id, `${TAB_PRODUCT}!A1`,   [PRODUCT_HEADERS]),
   ]);
   await appendValues(id, `${TAB_SETTINGS}!A2`, [[LAST_BILL_KEY, '']]);
+  await appendValues(id, `${TAB_PRODUCT}!A2`,  PRODUCT_SAMPLE_ROWS);
 
   return id;
 };
@@ -447,6 +457,46 @@ export const getMonthSummary = async (year: number, month: number): Promise<Mont
   } catch {
     return { totalBills: 0, totalPurchaseBills: 0, totalSales: 0, totalSgst: 0, totalCgst: 0, missingDays: 0 };
   }
+};
+
+// ── ProductMaster ─────────────────────────────────────────────────────────
+
+export const ensureProductMasterTab = async (spreadsheetId: string): Promise<void> => {
+  const gids = await getSheetGids(spreadsheetId);
+  if (TAB_PRODUCT in gids) return;
+
+  // Tab doesn't exist — add it
+  await sheetsReq(`/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: TAB_PRODUCT, sheetId: 6 } } }],
+    }),
+  });
+  await appendValues(spreadsheetId, `${TAB_PRODUCT}!A1`, [PRODUCT_HEADERS]);
+  await appendValues(spreadsheetId, `${TAB_PRODUCT}!A2`, PRODUCT_SAMPLE_ROWS);
+};
+
+export const fetchProductMaster = async (): Promise<ProductEntry[]> => {
+  const id = getSheetId();
+  if (!id) return [];
+
+  await ensureProductMasterTab(id);
+
+  const rows = await readValues(id, `${TAB_PRODUCT}!A:F`);
+  if (rows.length <= 1) return [];
+
+  return rows
+    .slice(1)
+    .filter(r => r[5]?.toUpperCase() === 'TRUE')
+    .map(r => ({
+      category:    r[0] ?? '',
+      brand:       r[1] ?? '',
+      productName: r[2] ?? '',
+      hsn:         r[3] ?? '',
+      gstPercent:  parseFloat(r[4] ?? '18') || 18,
+      isActive:    true,
+    }))
+    .filter(e => e.category && e.brand && e.productName);
 };
 
 // ── Re-exports / backward-compat aliases ──────────────────────────────────
