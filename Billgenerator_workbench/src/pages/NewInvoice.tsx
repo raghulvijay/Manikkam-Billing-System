@@ -13,7 +13,13 @@ import { useShop } from '../context/ShopContext';
 import { useAuth } from '../context/AuthContext';
 import { useDraft } from '../hooks/useDraft';
 import type { InvoiceItem, CustomerBill } from '../types';
-import { getNextBillNumber, appendCustomerBill, updateCustomerBill } from '../utils/googleSheets';
+import {
+  getNextBillNumber,
+  appendCustomerBillWithItems,
+  updateCustomerBillWithItems,
+  updateBillDriveLink,
+} from '../utils/googleSheets';
+import { enqueuePending } from '../utils/syncQueue';
 import { getInvoicePDFBlob } from '../utils/generatePDF';
 import { ensureFolderPath, uploadFileToDrive, getMonthFolderPath } from '../utils/googleDrive';
 import { numberToWords } from '../utils/numberToWords';
@@ -201,6 +207,8 @@ export const NewInvoice: React.FC = () => {
         prev ? { ...prev, driveFileId: result.id, driveLink: result.webViewLink } : prev,
       );
       setDriveStatus('saved');
+      // Update the Sheets row with Drive link (best-effort)
+      updateBillDriveLink(bill.billNo, result.id, result.webViewLink).catch(() => undefined);
     } catch (e: unknown) {
       setDriveStatus('failed');
       const reason = e instanceof Error ? e.message : 'Unknown error';
@@ -253,20 +261,25 @@ export const NewInvoice: React.FC = () => {
       }
 
       // Sync to Google Sheets
+      let finalBill = bill;
       if (isAuthenticated) {
         try {
           if (isEditMode) {
-            await updateCustomerBill(bill);
+            await updateCustomerBillWithItems(bill);
           } else {
-            await appendCustomerBill(bill);
+            const actualBillNo = await appendCustomerBillWithItems(bill);
+            if (actualBillNo !== bill.billNo) {
+              finalBill = { ...bill, billNo: actualBillNo };
+            }
           }
         } catch (e: unknown) {
           const reason = e instanceof Error ? e.message : '';
           if (reason.includes('401') || reason.includes('403')) {
-            toast.error('Sheets sync failed: permission denied. Bill saved locally only.');
+            toast.error('Sheets sync failed: reconnect Google account in Settings.');
           } else {
-            toast.error('Sheets sync failed — bill saved locally. It will not appear in reports.');
+            toast.error('Sheets sync failed — bill saved locally only.');
           }
+          if (!isEditMode) enqueuePending('customer', bill);
         }
       }
 
@@ -274,26 +287,26 @@ export const NewInvoice: React.FC = () => {
       try {
         const existing = JSON.parse(localStorage.getItem('mc-bills') ?? '[]') as CustomerBill[];
         if (isEditMode && editId) {
-          const updated = existing.map(b => b.id === editId ? bill : b);
+          const updated = existing.map(b => b.id === editId ? finalBill : b);
           localStorage.setItem('mc-bills', JSON.stringify(updated));
         } else {
-          existing.unshift(bill);
+          existing.unshift(finalBill);
           localStorage.setItem('mc-bills', JSON.stringify(existing.slice(0, 200)));
         }
       } catch {
         // localStorage full or unavailable — not critical
       }
 
-      setGeneratedBill(bill);
+      setGeneratedBill(finalBill);
       clearDraft();
       setStep(3);
       toast.success('Bill generated!');
 
       // Auto-upload to Drive immediately after showing Done step
       if (isAuthenticated && blob) {
-        uploadToDrive(bill, blob);
+        uploadToDrive(finalBill, blob);
       } else if (!isAuthenticated) {
-        setDriveStatus('idle'); // not connected — Drive section won't show
+        setDriveStatus('idle');
       }
     } catch (e: unknown) {
       const reason = e instanceof Error ? e.message : 'Unknown error';
