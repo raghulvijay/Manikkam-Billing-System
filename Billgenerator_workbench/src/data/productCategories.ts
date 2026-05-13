@@ -1,0 +1,28 @@
+export const PRODUCT_CATEGORIES = [
+  'TV',
+  'Refrigerator',
+  'Fully Automatic Washing Machine',
+  'Semi Automatic Washing Machine',
+  'AC',
+  'Air Cooler',
+  'Mixer',
+  'Grinder',
+  'Microwave',
+  'Induction Stove',
+  'Chimney',
+  'Water Purifier',
+  'Fan',
+  'Geyser',
+  'Iron Box',
+  'Stabilizer',
+  'Set Top Box',
+  'Sofa',
+  'Wooden Cot',
+  'Dining Table',
+  'Bero',
+  'Wooden Items',
+  'Steel Items',
+  'Plastic Items',
+] as const;
+
+export type ProductCategory = typeof PRODUCT_CATEGORIES[number];
