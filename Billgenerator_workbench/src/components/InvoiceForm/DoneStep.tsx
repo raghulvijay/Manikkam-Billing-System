@@ -34,14 +34,14 @@ export const DoneStep: React.FC<DoneStepProps> = ({
 
   const billMessage =
     `Dear ${bill.customerName},\n\n` +
-    `Thank you for shopping at ${settings.shopName}!\n\n` +
-    `Bill No : ${bill.billNo}\n` +
-    `Date    : ${fmtDate(bill.date)}\n` +
-    `Items   : ${bill.items.length}\n` +
-    `Amount  : ${fmtCurrency(bill.grandTotal)}\n` +
-    `Payment : ${bill.paymentType}\n\n` +
-    `For queries: ${settings.phone1}\n` +
-    `${settings.shopName}, ${settings.addressLine1}`;
+    `Thank you for shopping with ${settings.shopName}.\n\n` +
+    `Your invoice has been generated successfully.\n\n` +
+    `Bill No: ${bill.billNo}\n` +
+    `Date: ${fmtDate(bill.date)}\n` +
+    `Amount: ₹${bill.grandTotal.toFixed(2)}\n\n` +
+    `For any warranty/service support, please contact us.\n\n` +
+    `${settings.shopName}\n` +
+    `Ph: ${settings.phone1}${settings.phone2 ? ` / ${settings.phone2}` : ''}`;
 
   const handleDownload = () => {
     try {
@@ -106,9 +106,9 @@ export const DoneStep: React.FC<DoneStepProps> = ({
     }
     // SMS has ~160 char limit per segment, keep it short
     const smsText =
-      `${settings.shopName}\nBill ${bill.billNo} | ${fmtDate(bill.date)}\n` +
-      `${bill.customerName} | ${fmtCurrency(bill.grandTotal)}\n` +
-      `For queries: ${settings.phone1}`;
+      `Dear ${bill.customerName}, thank you for shopping with ${settings.shopName}. ` +
+      `Bill No: ${bill.billNo}, Amount: ₹${bill.grandTotal.toFixed(2)}. ` +
+      `Contact: ${settings.phone1}${settings.phone2 ? ` / ${settings.phone2}` : ''}`;
     try {
       window.open(`sms:+91${phone}?body=${encodeURIComponent(smsText)}`, '_blank');
     } catch {
