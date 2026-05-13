@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search as SearchIcon, Receipt, Phone, X, Pencil } from 'lucide-react';
+import { Search as SearchIcon, Receipt, Phone, X, Pencil, Loader } from 'lucide-react';
 import { fmtCurrency } from '../utils/currencyFormat';
 import { fmtDate } from '../utils/dateFormat';
 import type { CustomerBill } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { getCustomerBills } from '../utils/googleSheets';
 
 const BILLS_KEY = 'mc-bills';
 
@@ -14,10 +16,32 @@ const loadAll = (): CustomerBill[] => {
 
 export const Search: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerBill[]>([]);
   const [searched, setSearched] = useState(false);
-  const [allBills] = useState<CustomerBill[]>(() => loadAll());
+  const [allBills, setAllBills] = useState<CustomerBill[]>(() => loadAll());
+  const [cloudLoading, setCloudLoading] = useState(false);
+
+  // Fetch from Sheets and merge with local cache
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    setCloudLoading(true);
+    getCustomerBills()
+      .then(cloudBills => {
+        setAllBills(prev => {
+          const cloudIds = new Set(cloudBills.map(b => b.id));
+          const merged = [
+            ...cloudBills,
+            ...prev.filter(b => !cloudIds.has(b.id)),
+          ];
+          try { localStorage.setItem(BILLS_KEY, JSON.stringify(merged.slice(0, 200))); } catch { /* ignore */ }
+          return merged;
+        });
+      })
+      .catch(() => { /* silent fail — keep local */ })
+      .finally(() => setCloudLoading(false));
+  }, [isAuthenticated]);
 
   // Live search as user types
   useEffect(() => {
@@ -68,6 +92,14 @@ export const Search: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* Cloud sync indicator */}
+      {cloudLoading && (
+        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] mb-3">
+          <Loader size={12} className="animate-spin" />
+          <span>Syncing from cloud…</span>
+        </div>
+      )}
 
       {/* Result count */}
       {searched && (
