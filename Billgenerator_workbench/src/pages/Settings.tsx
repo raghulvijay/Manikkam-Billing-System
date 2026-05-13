@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Save, LogOut, RefreshCw, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Save, LogOut, RefreshCw, ChevronDown, ChevronUp, CloudUpload } from 'lucide-react';
 import { Header } from '../components/Header';
 import { useShop } from '../context/ShopContext';
 import { useAuth } from '../context/AuthContext';
 import { getSheetId } from '../utils/googleSheets';
 import { setClientId, getClientId } from '../lib/googleAuth';
+import { getPendingCount, syncAllPending } from '../utils/syncQueue';
 
 export const Settings: React.FC = () => {
   const { settings, updateSettings } = useShop();
@@ -16,6 +17,8 @@ export const Settings: React.FC = () => {
   const [saved, setSaved] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [showGuide, setShowGuide] = useState(!getClientId());
+  const [pendingCount, setPendingCount] = useState(() => getPendingCount());
+  const [syncing, setSyncing] = useState(false);
 
   const set = <K extends keyof typeof form>(key: K, val: typeof form[K]) =>
     setForm(p => ({ ...p, [key]: val }));
@@ -44,6 +47,30 @@ export const Settings: React.FC = () => {
   const handleDisconnect = () => {
     signOut();
     toast.success('Disconnected');
+  };
+
+  const handleSyncPending = async () => {
+    if (!isAuthenticated) {
+      toast.error('Connect your Google account first');
+      return;
+    }
+    setSyncing(true);
+    try {
+      const count = await syncAllPending();
+      const remaining = getPendingCount();
+      setPendingCount(remaining);
+      if (count > 0) {
+        toast.success(`Synced ${count} bill${count > 1 ? 's' : ''} to Google Sheets`);
+      } else if (remaining === 0) {
+        toast.success('Everything is already synced');
+      } else {
+        toast.error(`Sync failed for ${remaining} bill${remaining > 1 ? 's' : ''} — try again`);
+      }
+    } catch {
+      toast.error('Sync failed — check your connection');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const sheetId = getSheetId();
@@ -273,6 +300,40 @@ export const Settings: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Pending Sync */}
+        {pendingCount > 0 && (
+          <>
+            <p className="section-title">Pending Sync</p>
+            <div className="card mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: '#B45309' }}>
+                    {pendingCount} bill{pendingCount > 1 ? 's' : ''} waiting to sync
+                  </p>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Bills saved locally but not yet in Google Sheets
+                  </p>
+                </div>
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{ background: '#FEF3C7', color: '#B45309' }}
+                >
+                  {pendingCount}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-primary w-full"
+                onClick={handleSyncPending}
+                disabled={syncing}
+              >
+                <CloudUpload size={16} />
+                {syncing ? 'Syncing…' : 'Sync Pending Data'}
+              </button>
+            </div>
+          </>
+        )}
 
         {/* Bill Number Reset */}
         <p className="section-title">Bill Number</p>
